@@ -1,0 +1,186 @@
+---
+title: "young_survey"
+author: "YOON HEO"
+date: '2020 2 13 '
+output: html_document
+---
+
+### library
+```{r, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(MASS)
+library(corrplot)
+
+select <- dplyr::select
+```
+
+
+## Data loading
+
+```{r}
+
+data <- read.csv("responses.csv", na.strings = c("", "NA", " "), stringsAsFactors = FALSE)
+dim(data)
+```
+
+## Check missing value
+
+```{r missing value, warning=FALSE, message=FALSE}
+
+# missing_values <- data %>% 
+#   summarize_all(funs(sum(is.na(.))/n()))
+# missing_values <- gather(missing_values)
+# 
+# missing_values %>%
+#   filter(value > 0) %>%
+#   mutate(value <- round(value * 100,1)) %>%
+#   ggplot(aes(reorder(key,value),value)) +
+#   geom_bar(stat = "identity") +
+#   coord_flip() + xlab("Missing Value") + ylab("") +
+#   theme_bw()  
+
+data %>%
+  summarise_all(funs(sum(is.na(.)))) %>%
+  gather() %>%
+  filter(value > 0) %>%
+  nrow()
+
+```
+
+## 데이터 클리닝
+
+### 캐릭터 데이터 숫자로 바꾸기
+
+```{r}
+
+## 담배쟁이들
+data$Smoking[data$Smoking == "never smoked" & !is.na(data$Smoking)] <- 1
+data$Smoking[data$Smoking == "tried smoking" & !is.na(data$Smoking)] <- 2
+data$Smoking[data$Smoking == "former smoker" & !is.na(data$Smoking)] <- 3
+data$Smoking[data$Smoking == "current smoker" & !is.na(data$Smoking)] <- 4
+data$Smoking <- as.numeric(data$Smoking)
+
+## 술쟁이들
+data$Alcohol[data$Alcohol == "never" & !is.na(data$Alcohol)] <- 1
+data$Alcohol[data$Alcohol == "social drinker" & !is.na(data$Alcohol)] <- 2
+data$Alcohol[data$Alcohol == "drink a lot" & !is.na(data$Alcohol)] <- 3
+data$Alcohol <- as.numeric(data$Alcohol)
+
+## 지각쟁이
+data$Punctuality[data$Punctuality == "i am often early" & !is.na(data$Punctuality)] <- 1
+data$Punctuality[data$Punctuality == "i am always on time" & !is.na(data$Punctuality)] <- 2
+data$Punctuality[data$Punctuality == "i am often running late" & !is.na(data$Punctuality)] <- 3
+data$Punctuality <- as.numeric(data$Punctuality)
+
+## 구라쟁이
+data$Lying[data$Lying == "never" & !is.na(data$Lying)] <- 1
+data$Lying[data$Lying == "sometimes" & !is.na(data$Lying)] <- 2
+data$Lying[data$Lying == "only to avoid hurting someone" & !is.na(data$Lying)] <- 3
+data$Lying[data$Lying == "everytime it suits me" & !is.na(data$Lying)] <- 4
+data$Lying <- as.numeric(data$Lying)
+
+## 인터넷쟁이
+data$Internet.usage[data$Internet.usage == "no time at all" & !is.na(data$Internet.usage)] <- 1
+data$Internet.usage[data$Internet.usage == "less than an hour a day" & !is.na(data$Internet.usage)] <- 2
+data$Internet.usage[data$Internet.usage == "few hours a day" & !is.na(data$Internet.usage)] <- 3
+data$Internet.usage[data$Internet.usage == "most of the day" & !is.na(data$Internet.usage)] <- 4
+data$Internet.usage <- as.numeric(data$Internet.usage)
+
+## 성별
+data$Gender[data$Gender == "female" & !is.na(data$Gender)] <- 0
+data$Gender[data$Gender == "male" & !is.na(data$Gender)] <- 1
+data$Gender <- as.factor(data$Gender)
+
+## 손잡이
+data$Left...right.handed[data$Left...right.handed == "right handed" & !is.na(data$Left...right.handed)] <- 0
+data$Left...right.handed[data$Left...right.handed == "left handed" & !is.na(data$Left...right.handed)] <- 1
+data$Left...right.handed <- as.factor(data$Left...right.handed)
+
+## 교육
+data$Education[data$Education == "currently a primary school pupil" & !is.na(data$Education)] <- 1
+data$Education[data$Education == "primary school" & !is.na(data$Education)] <- 2
+data$Education[data$Education == "secondary school" & !is.na(data$Education)] <- 3
+data$Education[data$Education == "college/bachelor degree" & !is.na(data$Education)] <- 4
+data$Education[data$Education == "masters degree" & !is.na(data$Education)] <- 5
+data$Education[data$Education == "doctorate degree" & !is.na(data$Education)] <- 6
+data$Education <- as.factor(data$Education)
+
+## ????
+data$Only.child[data$Only.child == "no" & !is.na(data$Only.child)] <- 0
+data$Only.child[data$Only.child == "yes" & !is.na(data$Only.child)] <- 1
+data$Only.child <- as.factor(data$Only.child)
+
+## 시골 
+data$Village...town[data$Village...town == "village" & !is.na(data$Village...town)] <- 0
+data$Village...town[data$Village...town == "city" & !is.na(data$Village...town)] <- 1
+data$Village...town <- as.factor(data$Village...town)
+
+## 뭐 집 어떻게 생겼는지?
+data$House...block.of.flats[data$House...block.of.flats == "block of flats" & !is.na(data$House...block.of.flats)] <- 0
+data$House...block.of.flats[data$House...block.of.flats == "house/bungalow" & !is.na(data$House...block.of.flats)] <- 1
+data$House...block.of.flats <- as.factor(data$House...block.of.flats)
+
+```
+
+
+### Missing Value 처리
+
+```{r}
+## 가장 많이 사용되는 값으로 처리할 것임.
+## getmode 함수 만들기
+getmode <- function(v) {
+   uniqv <- unique(v)
+   uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
+## is.na 값에 getmode 리턴값 넣기 
+for (i in 1 :ncol(data)) {
+  data[is.na(data[,i]),i] <- getmode(data[,i])
+}
+
+sum(colSums(is.na(data)))
+```
+
+## Network Analysis 사용할 것임
+
+```{r}
+## 데이터 확인
+data %>%
+  select_if(is.numeric) %>%
+  summary()
+
+data %>%
+  select_if(is.factor) %>%
+  summary()
+```
+
+```{r}
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
