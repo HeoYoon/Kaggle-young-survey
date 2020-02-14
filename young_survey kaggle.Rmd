@@ -20,6 +20,8 @@ library(factoextra)
 library('e1071')
 library(caret)
 library(randomForest)
+library(NetworkComparisonTest)
+library(mgm)
 select <- dplyr::select
 ```
 
@@ -186,12 +188,16 @@ corMat <- cor_auto(traits)
 names <- c(seq(1:ncol(traits)))
 names <- as.character(names)
 
-Graph_lasso <- qgraph(corMat, graph = "glasso", layout = "spring", tuning = 0.25,
-                     sampleSize = nrow(data), 
+Graph_pcor <- qgraph(corMat, graph = "pcor", layout = "spring", tuning = 0.25,
+                     sampleSize = nrow(traits), 
                       legend.cex = 0.35, vsize = 3,esize = 7,
                       posCol = "#003399", negCol = "#FF9933",vTrans = 200, nodeNames = colnames(corMat), labels = names)
 
 
+Graph_lasso <- qgraph(corMat, graph = "glasso", layout = "spring", tuning = 0.25,
+                     sampleSize = nrow(traits), 
+                      legend.cex = 0.35, vsize = 3,esize = 7,
+                      posCol = "#003399", negCol = "#FF9933",vTrans = 200, nodeNames = colnames(corMat), labels = names)
 ```
 
 
@@ -276,91 +282,19 @@ confusionMatrix(svm_prediction,test_svm$group)
 
 ```
 
-### Random Forest
+### Network Analysis Clustering
 
-```{r, fig.width=9, fig.height=7}
-# train_rf <- train
-# test_rf <- test
-# rf1 <- randomForest(x= train_rf[,-151], y = train_rf[,151], importance = TRUE, ntree = 1000)
-# rf1
-# varImpPlot(rf1)
-# 
-# # col <- as.data.frame(rf1$importance) %>%
-# #   mutate(rowna <- rownames(.)) %>%
-# #   filter(MeanDecreaseGini > 4) %>%
-# #   select("rowna <- rownames(.)")
-# # colnames(col) <- "rowname"
-# # as.vector(t(col))
-# # 
-# # train_rf %>%
-# #   select(-one_of(as.vector(t(col))))
-# # 
-# # train_rf <- train_rf %>%
-# #   select(-one_of(as.vector(t(col))))
-# # test_rf <- test_rf %>%
-# #   select(-one_of(as.vector(t(col))))
-# 
-# 
-# # rf2 <- randomForest(x= train_rf[,-140], y = train_rf[,140], importance = TRUE, ntree = 1000)
-# # rf2
-# # varImpPlot(rf2)
-# 
-# 
-# set.seed(2348)
-# 
-# view(train_rf)
-# cv10_1 <- createMultiFolds(train_rf[,140], k = 10, times = 10)
-# ctrl_1 <- trainControl(method = "repeatedcv", number = 10, repeats = 10, index = cv10_1)
-# 
-# set.seed(1234)
-# rf.5<- train(x= train_rf[,-151], y = train_rf[,151], method = "rf", tuneLength = 3,ntree = 1000, trControl =ctrl_1)
-# rf.5
-# 
-# pr.rf=predict(rf.5,newdata = test_rf)
-# confusionMatrix(pr.rf,test_rf$group)
+```{r, warning=FALSE, message=FALSE, fig.align='center', fig.height=12, fig.width=12}
+g <- as.igraph(Graph_lasso, attributes = TRUE)
+sgc <- spinglass.community(g)
+unique(sgc$membership)
+
+group.spinglass <- list(c(which(sgc$membership == 6)), c(which(sgc$membership == 5)), c(which(sgc$membership == 4)), c(which(sgc$membership == 3)), 
+                        c(which(sgc$membership == 2)),c(which(sgc$membership == 1)))
 
 
+Graph_lasso <- qgraph(corMat, graph = "glasso", layout = "spring", tuning = 0.25,
+                     sampleSize = nrow(traits), 
+                      legend.cex = 0.35, vsize = 3,esize = 7,groups = group.spinglass,
+                      posCol = "#003399", negCol = "#FF9933",vTrans = 200, nodeNames = colnames(corMat), labels = names)
 ```
-
-### Network Analysis Following
-
-
-```{r, warning=FALSE, message=FALSE, fig.align='center', fig.width=9, fig.height=7}
-
-centRes <- centrality(Graph_lasso)
-
-p1 <- qplot(centRes$OutDegree, geom = "histogram") +
-  geom_histogram(bins  = 10) + 
-  theme_minimal(12) +labs(title = "Node Strength") + xlab("Strength")
-s
-p2 <- qplot(centRes$Closeness, geom = "histogram") +
-  geom_histogram(bins  = 20) + 
-  theme_minimal(12) +labs(title = "Node Closeness") + xlab("Closeness")
-
-p3 <- qplot(centRes$Betweenness, geom = "histogram") +
-  geom_histogram(bins  = 20) + 
-  theme_minimal(12) +labs(title = "Node Betweenness") + xlab("Betweenness")
-
-grid.arrange(p1,p2,p3, nrow = 3)
-```
-
-
-```{r}
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
