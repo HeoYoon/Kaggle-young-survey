@@ -11,7 +11,15 @@ library(tidyverse)
 library(ggplot2)
 library(MASS)
 library(corrplot)
-
+library(gridExtra)
+library(qgraph)
+library(igraph)
+library(polycor)
+library(cluster)
+library(factoextra)
+library('e1071')
+library(caret)
+library(randomForest)
 select <- dplyr::select
 ```
 
@@ -144,30 +152,202 @@ sum(colSums(is.na(data)))
 
 ## Network Analysis 사용할 것임
 
-```{r}
+```{r, warning=FALSE, message=FALSE, fig.align='center', fig.height=12, fig.width=12}
+
 ## 데이터 확인
-data %>%
-  select_if(is.numeric) %>%
-  summary()
+music = data[,1:19]
+movies = data[,19:31]
+interests = data[,31:46]
+hobbies = data[,46:63]
+phobias = data[,63:73]
+health = data[,73:76]
+traits = data[,76:133]
+spending = data[,133:140]
+demographics = data[,140:150]
 
-data %>%
-  select_if(is.factor) %>%
-  summary()
+
+## Polychoric Correlations 
+## 위키피디아 참조
+## self reports나 survey에 많이 사용되는 correlation이라고 함.
+## 오늘 알았음
+
+corMat <- cor_auto(traits)
+
+# corrplot(corMat, method="color",
+#          type="upper", order="hclust", 
+#          addCoef.col = "black", # Add coefficient of correlation
+#          tl.col="black", tl.srt=45, #Text label color and rotation
+#          # Combine with significance
+#          sig.level = 0.01, insig = "blank", 
+#          # hide correlation coefficient on the principal diagonal
+#          diag=FALSE 
+#          )
+
+names <- c(seq(1:ncol(traits)))
+names <- as.character(names)
+
+Graph_lasso <- qgraph(corMat, graph = "glasso", layout = "spring", tuning = 0.25,
+                     sampleSize = nrow(data), 
+                      legend.cex = 0.35, vsize = 3,esize = 7,
+                      posCol = "#003399", negCol = "#FF9933",vTrans = 200, nodeNames = colnames(corMat), labels = names)
+
+
 ```
+
+
+## Positive mind set vs Negative mind set
+
+### Clustering 할거임
+
+#### 50 49 55 32 vs 37 25 48 44
+
+
+```{r, warning=FALSE, message=FALSE}
+## 데이터 따로 빼기
+po_na <- traits[,c(50,49,55,32,37,25,48,44)]
+po_na_mat <- cor_auto(po_na)
+## 혹시 모르니까 correlation Check
+corrplot(po_na_mat, method="color",
+         type="upper", order="hclust",
+         addCoef.col = "black", # Add coefficient of correlation
+         tl.col="black", tl.srt=45, #Text label color and rotation
+         # Combine with significance
+         sig.level = 0.01, insig = "blank",
+         # hide correlation coefficient on the principal diagonal
+         diag=FALSE
+         )
+
+po_na_cluster <- kmeans(po_na, centers = 2, nstart = 25)
+
+## 클러스터가 예상대로 진행되었음을 확인.
+po_na_cluster$centers
+
+```
+
+## Modeling
+
+### 세팅
+
+```{r}
+## 크게 없지만 모델 만들어 보겠음.
+## Classification이고 두 개 pos, neg임
+## SVM 쓸 거임
+data$group <- as.factor(po_na_cluster$cluster)
+
+ind <- createDataPartition(data$group, p = 0.7, list = FALSE)
+train <- data[ind,]
+test <- data[-ind,]
+
+dim(train)
+```
+
+### SVM
+
+```{r}
+train_svm <- train
+test_svm <- test
+
+## SVM RBF
+svm_radial <- best.tune(svm, group ~., data = train_svm, kernel ="radial")
+svm_radial
+
+svm_prediction = predict(svm_radial,newdata = test_svm)
+confusionMatrix(svm_prediction,test_svm$group)
+
+## SVM Polynomial
+svm_poly <- best.tune(svm, group ~., data = train_svm, kernel ="polynomial")
+svm_poly
+
+svm_prediction = predict(svm_poly,newdata = test_svm)
+confusionMatrix(svm_prediction,test_svm$group)
+
+## SVM Linear
+svm_linear <- best.tune(svm, group ~., data = train_svm, kernel ="linear")
+svm_linear
+svm_prediction = predict(svm_linear,newdata = test_svm)
+confusionMatrix(svm_prediction,test_svm$group)
+
+## SVM sigmoid
+svm_sigmoid <- best.tune(svm, group ~., data = train_svm, kernel ="sigmoid")
+svm_sigmoid
+svm_prediction = predict(svm_sigmoid,newdata = test_svm)
+confusionMatrix(svm_prediction,test_svm$group)
+
+
+```
+
+### Random Forest
+
+```{r, fig.width=9, fig.height=7}
+# train_rf <- train
+# test_rf <- test
+# rf1 <- randomForest(x= train_rf[,-151], y = train_rf[,151], importance = TRUE, ntree = 1000)
+# rf1
+# varImpPlot(rf1)
+# 
+# # col <- as.data.frame(rf1$importance) %>%
+# #   mutate(rowna <- rownames(.)) %>%
+# #   filter(MeanDecreaseGini > 4) %>%
+# #   select("rowna <- rownames(.)")
+# # colnames(col) <- "rowname"
+# # as.vector(t(col))
+# # 
+# # train_rf %>%
+# #   select(-one_of(as.vector(t(col))))
+# # 
+# # train_rf <- train_rf %>%
+# #   select(-one_of(as.vector(t(col))))
+# # test_rf <- test_rf %>%
+# #   select(-one_of(as.vector(t(col))))
+# 
+# 
+# # rf2 <- randomForest(x= train_rf[,-140], y = train_rf[,140], importance = TRUE, ntree = 1000)
+# # rf2
+# # varImpPlot(rf2)
+# 
+# 
+# set.seed(2348)
+# 
+# view(train_rf)
+# cv10_1 <- createMultiFolds(train_rf[,140], k = 10, times = 10)
+# ctrl_1 <- trainControl(method = "repeatedcv", number = 10, repeats = 10, index = cv10_1)
+# 
+# set.seed(1234)
+# rf.5<- train(x= train_rf[,-151], y = train_rf[,151], method = "rf", tuneLength = 3,ntree = 1000, trControl =ctrl_1)
+# rf.5
+# 
+# pr.rf=predict(rf.5,newdata = test_rf)
+# confusionMatrix(pr.rf,test_rf$group)
+
+
+```
+
+### Network Analysis Following
+
+
+```{r, warning=FALSE, message=FALSE, fig.align='center', fig.width=9, fig.height=7}
+
+centRes <- centrality(Graph_lasso)
+
+p1 <- qplot(centRes$OutDegree, geom = "histogram") +
+  geom_histogram(bins  = 10) + 
+  theme_minimal(12) +labs(title = "Node Strength") + xlab("Strength")
+s
+p2 <- qplot(centRes$Closeness, geom = "histogram") +
+  geom_histogram(bins  = 20) + 
+  theme_minimal(12) +labs(title = "Node Closeness") + xlab("Closeness")
+
+p3 <- qplot(centRes$Betweenness, geom = "histogram") +
+  geom_histogram(bins  = 20) + 
+  theme_minimal(12) +labs(title = "Node Betweenness") + xlab("Betweenness")
+
+grid.arrange(p1,p2,p3, nrow = 3)
+```
+
 
 ```{r}
 
-
-
 ```
-
-
-
-
-
-
-
-
 
 
 
